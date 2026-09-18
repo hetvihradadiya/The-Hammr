@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  BUYER
+  SELLER
+}
+
+model User {
+  id            Int            @id @default(autoincrement())
+  name          String
+  email         String         @unique
+  passwordHash  String
+  role          UserRole
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  twoFactorAuth TwoFactorAuth?
+  tokens        Token[]
+
+  auctions               Auction[]
+  currentHighestAuctions Auction[] @relation("CurrentHighestBidder")
+  bids                   Bid[] // Fixed: Added missing back-relation
+
+  @@index([email])
+  @@index([role])
+}
+
+model TwoFactorAuth {
+  id         Int       @id @default(autoincrement())
+  userId     Int       @unique
+  secret     String
+  enabled    Boolean   @default(false)
+  verifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum TokenType {
+  ACCESS
+  REFRESH
+  PASSWORD_RESET
+  TWO_FACTOR_PENDING
+}
+
+model Token {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  type      TokenType
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+}
+
+enum AuctionStatus {
+  SCHEDULED
+  LIVE
+  CLOSED
+  SOLD
+  UNSOLD
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  auctions Auction[]
+
+  @@index([name])
+}
+
+model Bid {
+  id        Int      @id @default(autoincrement())
+  auctionId Int
+  bidderId  Int
+  amount    Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder  User    @relation(fields: [bidderId], references: [id], onDelete: Restrict)
+
+  @@index([auctionId, createdAt])
+  @@index([bidderId, createdAt])
+}
+
+model Auction {
+  id                     Int           @id @default(autoincrement())
+  sellerId               Int
+  categoryId             Int
+  title                  String
+  description            String
+  startingPrice          Decimal       @db.Decimal(12, 2)
+  reservePrice           Decimal?      @db.Decimal(12, 2)
+  currentHighestBid      Decimal?      @db.Decimal(12, 2)
+  currentHighestBidderId Int?
+  scheduledStart         DateTime
+  scheduledEnd           DateTime
+  status                 AuctionStatus @default(SCHEDULED)
+  extensionSeconds       Int           @default(0)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  seller User @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  currentHighestBidder User? @relation("CurrentHighestBidder", fields: [currentHighestBidderId], references: [id], onDelete: SetNull)
+
+  images AuctionImage[]
+  bids   Bid[]
+
+  @@index([sellerId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([scheduledStart])
+  @@index([scheduledEnd])
+  @@index([currentHighestBidderId])
+}
+
+model AuctionImage {
+  id         Int      @id @default(autoincrement())
+  auctionId  Int
+  url        String
+  storageKey String
+  altText    String?
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  @@index([auctionId])
+  @@index([auctionId, sortOrder])
+}
